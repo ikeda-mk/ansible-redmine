@@ -1,0 +1,70 @@
+---
+
+- copy: src=mysql57-community-release-el6-9.noarch.rpm dest=/tmp/mysql57-community-release-el6-9.noarch.rpm owner=root group=root mode=644
+
+- name: rpm_install_yum_repo
+  yum:
+    name: /tmp/mysql57-community-release-el6-9.noarch.rpm
+    state: present
+
+- name: install_mysql
+  yum: 
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - mysql-community-client.x86_64
+    - mysql-community-server.x86_64
+    - mysql-community-devel.x86_64
+    - mysql-community-libs.x86_64
+    - mysql-community-libs-compat.x86_64
+    - MySQL-python27.x86_64
+
+- name: enable_start_mysqld
+  service:
+    name=mysqld
+    state=started
+    enabled=yes
+
+
+# /var/log/mysqld.log にrootのtemporary passwordが出力されるので保持する
+- name: cat_tmpl_pw
+  shell: cat /var/log/mysqld.log  | grep "temporary password" | tail -n 1
+  register: mysql_tmpl_pw
+
+- name: echo_tmpl_pw
+  shell: echo "{{ mysql_tmpl_pw.stdout.split()[-1] }}"
+
+- name: change_root_password
+  shell: echo "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('{{ mysqld.root_password }}');" | mysql --connect-expired-password -uroot -p'{{ mysql_tmpl_pw.stdout.split()[-1] }}'
+
+
+- name: delete anonymous MySQL server user 
+  mysql_user: 
+    login_user: root
+    login_password: "{{ mysqld.root_password }}"
+    user: ""
+    host: "127.0.0.1"
+    state: "absent"
+ 
+- name: delete anonymous MySQL server user for localhost
+  mysql_user:
+    login_user: root
+    login_password: "{{ mysqld.root_password }}"
+    user: ""
+    state: "absent"
+ 
+- name: remove the MySQL test database
+  mysql_db:
+    login_user: root 
+    login_password: "{{ mysqld.root_password }}"
+    db: test 
+    state: absent 
+
+- name: delete_root_remote_login
+  mysql_user: 
+    login_user: root 
+    login_password: "{{ mysqld.root_password }}"
+    user: "root" 
+    host: "{{ ansible_hostname }}"
+    state: "absent" 
+

@@ -1,0 +1,27 @@
+---
+- name: install_sysstat
+  yum: name=sysstat state=latest
+
+- name: /etc/localtime change_timezone
+  shell: cp -p /usr/share/zoneinfo/Japan /etc/localtime
+  
+- name: /etc/sysconfig/clock
+  copy: src=clock dest=/etc/sysconfig/clock owner=root group=root mode=644
+
+- name: /etc/sysconfig/i18n
+  copy: src=i18n dest=/etc/sysconfig/i18n owner=root group=root mode=644
+
+# 不要サービス停止
+- name: disable services
+  service: 
+    name: "{{ item }}"
+    enabled: off
+  with_items:
+    - iptables
+    - ip6tables
+    - acpid
+    - netfs
+    - nfslock
+    - lvm2-monitor
+
+

@@ -1,0 +1,12 @@
+[local]
+127.0.0.1
+
+[dbservers]
+127.0.0.1
+
+[redmine]
+127.0.0.1
+
+[production:children]
+dbservers
+redmine

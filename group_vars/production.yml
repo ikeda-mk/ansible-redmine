@@ -1,0 +1,8 @@
+mysqld:
+  # mysql root パスワード (アルファベット大文字小文字, 記号と数字を含むこと)
+  root_password: Root#0000
+  
+redmine:
+  # redmine DB パスワード (アルファベット大文字小文字, 記号と数字を含むこと)
+  redmine_db_password: Redmine#0000
+

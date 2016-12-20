@@ -1,0 +1,146 @@
+---
+
+- name: install_mysql
+  yum: 
+    name: MySQL-python27
+    state: latest
+
+- name: create_database
+  mysql_db:
+    login_user: root
+    login_password: "{{ mysqld.root_password }}"
+    name: redmine
+    encoding: utf8
+    state: present
+
+- name: create_redmine_database_user
+  mysql_user:
+    login_user: root
+    login_password: "{{ mysqld.root_password }}"
+    name: redmine
+    host: localhost
+    password: "{{ redmine.redmine_db_password }}"
+    priv: 'redmine.*:ALL'
+    state: present
+
+- name: install_package
+  yum: 
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - ruby22
+    - ruby22-devel
+    - ImageMagick
+    - ImageMagick-devel
+    - httpd24
+    - httpd24-devel
+    - apr-devel
+    - apr-util-devel
+    - gcc-c++
+    - libcurl-devel
+    - openssl-devel
+
+- name: alternatives_ruby
+  shell: alternatives --set ruby /usr/bin/ruby2.2
+
+- name: install_gem_bundler
+  gem:
+    name: bundler
+    version: 1.12.6
+    user_install: no 
+
+#- name: install_gem_passenger
+#  gem:
+#    name: passenger
+#    version: 5.1.0
+#    user_install: no 
+
+- shell: gem install passenger -v 5.1.0 --no-rdoc --no-ri
+
+- name: install_gem_rake
+  gem:
+    name: rake
+    user_install: no 
+
+- name: unarchive_redmine
+  unarchive:
+    src: http://www.redmine.org/releases/redmine-3.3.1.tar.gz
+    dest: /opt
+    owner: apache
+    group: apache
+    remote_src: yes
+    keep_newer: yes
+  tags: store_redmine
+  
+- name: database.yml_template
+  template: 
+    src=database.yml.j2
+    dest=/opt/redmine-3.3.1/config/database.yml
+    mode=0640 owner=apache group=apache
+
+- name: bundle_exec
+  shell: "{{ item }}"
+  args: 
+    chdir: /opt/redmine-3.3.1
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  with_items:
+    - bundle install --without development test
+    - bundle exec rake generate_secret_token
+    - RAILS_ENV=production bundle exec rake db:migrate
+    - RAILS_ENV=production REDMINE_LANG=ja bundle exec rake redmine:load_default_data
+
+- name: mkdirs
+  shell: "{{ item }}"
+  args: 
+    chdir: /opt/redmine-3.3.1
+  with_items:
+    - mkdir -p tmp tmp/pdf public/plugin_assets
+    - sudo chmod -R 755 files log tmp public/plugin_assets
+
+- name: chown
+  shell: chown -R apache:apache /opt/redmine-3.3.1
+
+
+# build mod_passenger 
+- stat: path=/usr/local/share/ruby/gems/2.2/gems/passenger-5.1.0/buildout/apache2/mod_passenger.so
+  register: stat_mod_passenger
+  tags: 
+    - passenger
+    - passenger_stat
+
+- name: echo_stat
+  shell: echo "{{ stat_mod_passenger['stat']['exists'] }}"
+  tags: 
+    - passenger
+    - passenger_stat
+
+- name: build_mod_passenger
+  shell: env NOEXEC_DISABLE=1 /usr/bin/ruby2.2 /usr/local/bin/rake RELEASE=yes apache2:clean apache2
+  args:
+    chdir: /usr/local/share/ruby/gems/2.2/gems/passenger-5.1.0
+  when: stat_mod_passenger.stat.exists == False
+  tags: passenger
+
+
+- shell: passenger-install-apache2-module --snippet > /etc/httpd/conf.d/passenger.conf
+  environment:
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+
+- copy: src=redmine.conf dest=/etc/httpd/conf.d/redmine.conf
+  tags: httpd
+
+- name: redmine_symlink
+  file: 
+    src: /opt/redmine-3.3.1/public
+    dest: /var/www/html/redmine
+    state: link
+  tags: httpd
+
+- name: enable_start_httpd
+  service:
+    name=httpd
+    state=started
+    enabled=yes
+
+
